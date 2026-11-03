@@ -1,9 +1,5 @@
-Soyo Badge AR / 15fps sprite-sheet fix
-
-Upload index.html and the entire assets/sheets folder to the ROOT of your existing Soyo_Badge-AR GitHub repository. Keep badge_target.mind and target_image.jpg unchanged.
-
-The previous animated WebP image could remain frozen when drawn into a canvas on iPhone Safari. This version advances 480 individual frames explicitly at 15 fps.
-
-Existing position adjustments in your Safari browser are preserved. The default scale for new devices is approximately 0.78, based on the screenshot, and can be fine-tuned with the gear icon.
-
-Refresh Safari after GitHub Pages deployment. Test on your actual phone.
+Soyo Badge AR - transparent MP4 edition
+Upload index.html, badge_target.mind and the assets folder to the ROOT of the GitHub Pages repository. Keep the existing target_image.jpg if desired.
+Video: 15 fps, 480 frames, 32 sec, H.264 side-by-side color/alpha mask. The shader restores transparency. No GIF/WebP sprite sheets are needed.
+The previous position settings stored in localStorage under badge-ar-settings are preserved.
+Camera and video playback need to be verified on the actual phone.

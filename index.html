@@ -1,67 +1,68 @@
 <!doctype html>
-<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Badge Animation AR</title>
-<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:system-ui,sans-serif}#status{position:fixed;top:16px;left:12px;right:12px;z-index:10;background:#111b;color:white;padding:12px;border-radius:10px;text-align:center;font-size:14px}#gear{position:fixed;right:15px;bottom:25px;z-index:11;border:0;border-radius:50%;background:#222c;color:white;font-size:24px;width:52px;height:52px}#panel{display:none;position:fixed;z-index:11;left:12px;right:12px;bottom:85px;background:#111e;color:white;border-radius:12px;padding:16px}#panel label{display:block;margin:8px 0}#panel input{width:100%}#panel button{padding:8px}a-scene{position:fixed!important;inset:0;z-index:1!important;background:transparent!important}a-scene canvas,.a-canvas{background:transparent!important}video{object-fit:cover!important}#status,#gear,#panel{position:fixed}</style>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Soyo Badge AR</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;font-family:system-ui,sans-serif}
+#status{position:fixed;top:16px;left:12px;right:12px;z-index:10;background:#111b;color:white;padding:12px;border-radius:10px;text-align:center;font-size:14px}
+#gear{position:fixed;right:15px;bottom:25px;z-index:11;border:0;border-radius:50%;background:#222c;color:white;font-size:24px;width:52px;height:52px}
+#panel{display:none;position:fixed;z-index:11;left:12px;right:12px;bottom:85px;background:#111e;color:white;border-radius:12px;padding:16px}
+#panel label{display:block;margin:8px 0}#panel input{width:100%}#panel button{padding:8px}
+a-scene{position:fixed!important;inset:0;z-index:1!important;background:transparent!important}
+a-scene canvas,.a-canvas{background:transparent!important}
+#alphaVideo{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+</style>
 <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 <script>
-const defaults={x:0,y:0,scale:0.78,rotation:0};let settings={...defaults};try{settings={...settings,...JSON.parse(localStorage.getItem('badge-ar-settings')||'{}')}}catch(e){}
-// Sprite-sheet animation: 480 real frames at 15fps. Animated WebP inside an Image
-// does not reliably advance when copied to a canvas on iOS Safari.
-const FPS=15, SHEET_COUNT=30, TILE=350;
-const sheets=new Map(), loading=new Map();
-function getSheet(n){
- if(sheets.has(n))return sheets.get(n);
- if(!loading.has(n)){
-  const img=new Image(); img.decoding='async';
-  const promise=new Promise(resolve=>{img.onload=()=>{sheets.set(n,img);loading.delete(n);resolve(img)};img.onerror=()=>{loading.delete(n);resolve(null)};});
-  loading.set(n,promise);img.src='./assets/sheets/'+String(n).padStart(2,'0')+'.webp';
- }
- return null;
-}
-AFRAME.registerComponent('badge-animation',{
+const defaults={x:0,y:0,scale:0.78,rotation:0};let settings={...defaults};
+try{settings={...settings,...JSON.parse(localStorage.getItem('badge-ar-settings')||'{}')}}catch(e){}
+AFRAME.registerComponent('badge-video',{
  init:function(){
-  this.canvas=document.createElement('canvas');this.canvas.width=TILE;this.canvas.height=TILE;
-  this.ctx=this.canvas.getContext('2d',{alpha:true});
-  this.texture=new THREE.CanvasTexture(this.canvas);this.texture.minFilter=THREE.LinearFilter;
-  this.material=new THREE.MeshBasicMaterial({map:this.texture,transparent:true,side:THREE.DoubleSide,depthWrite:false,toneMapped:false});
-  this.startTime=null;this.lastFrame=-1;this.ready=false;
-  this.el.addEventListener('object3dset',()=>this.apply());this.apply();getSheet(0);getSheet(1);
+  const v=document.getElementById('alphaVideo');
+  this.video=v;
+  this.texture=new THREE.VideoTexture(v);
+  this.texture.minFilter=THREE.LinearFilter;
+  this.texture.magFilter=THREE.LinearFilter;
+  this.texture.generateMipmaps=false;
+  // A single H.264 movie has RGB in the left half and an alpha mask in the right half.
+  // This works without browser support for transparent video codecs.
+  this.material=new THREE.ShaderMaterial({
+   uniforms:{videoMap:{value:this.texture}},
+   vertexShader:'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
+   fragmentShader:'precision mediump float;uniform sampler2D videoMap;varying vec2 vUv;void main(){vec3 rgb=texture2D(videoMap,vec2(vUv.x*0.5,vUv.y)).rgb;float a=texture2D(videoMap,vec2(0.5+vUv.x*0.5,vUv.y)).r;gl_FragColor=vec4(rgb,a);}',
+   transparent:true,side:THREE.DoubleSide,depthWrite:false
+  });
+  this.el.addEventListener('object3dset',()=>this.apply());
+  this.apply();
+  this.video.addEventListener('error',()=>{document.getElementById('status').textContent='動画の読み込みに失敗しました（assets/soyo_alpha.mp4）';document.getElementById('status').style.display='block'});
  },
  apply:function(){
-  const mesh=this.el.getObject3D('mesh');if(mesh)mesh.material=this.material;
+  const mesh=this.el.getObject3D('mesh');if(mesh){mesh.material=this.material;mesh.renderOrder=10;}
   this.el.object3D.position.set(settings.x,settings.y,0.015);
   this.el.object3D.rotation.z=settings.rotation*Math.PI/180;
   this.el.object3D.scale.set(settings.scale,settings.scale,1);
  },
- tick:function(t){
-  if(this.startTime===null)this.startTime=t;
-  const frame=Math.floor((t-this.startTime)*FPS/1000)%480;
-  const sheetIndex=Math.floor(frame/16),local=frame%16;
-  const sheet=getSheet(sheetIndex);
-  getSheet((sheetIndex+1)%SHEET_COUNT);
-  if(!sheet)return;
-  if(frame===this.lastFrame)return;
-  this.ctx.clearRect(0,0,TILE,TILE);
-  this.ctx.drawImage(sheet,(local%4)*TILE,Math.floor(local/4)*TILE,TILE,TILE,0,0,TILE,TILE);
-  this.texture.needsUpdate=true;this.lastFrame=frame;
-  // Keep only nearby decoded sprite sheets to avoid excessive mobile memory usage.
-  for(const n of sheets.keys())if(n!==sheetIndex&&n!==(sheetIndex+1)%SHEET_COUNT&&n!==(sheetIndex+SHEET_COUNT-1)%SHEET_COUNT)sheets.delete(n);
- },
  remove:function(){this.texture.dispose();this.material.dispose()}
 });
-</script></head><body><div id="status">缶バッジを映してください</div><button id="gear" aria-label="位置調整">⚙</button><div id="panel"><b>アニメーション位置調整</b><label>左右<input id="x" type="range" min="-0.5" max="0.5" step="0.005"></label><label>上下<input id="y" type="range" min="-0.5" max="0.5" step="0.005"></label><label>大きさ<input id="scale" type="range" min="0.2" max="2.5" step="0.01"></label><label>回転<input id="rotation" type="range" min="-180" max="180" step="1"></label><button id="reset">初期位置に戻す</button><p style="font-size:12px">位置はこの端末に保存されます。</p></div>
-<a-scene mindar-image="imageTargetSrc: ./badge_target.mind; autoStart: true;" renderer="colorManagement:true;alpha:true;antialias:true" color-space="sRGB" vr-mode-ui="enabled:false" device-orientation-permission-ui="enabled:false" embedded><a-camera position="0 0 0" look-controls="enabled:false"></a-camera><a-entity id="target" mindar-image-target="targetIndex: 0"><a-plane width="1" height="1" badge-animation></a-plane></a-entity></a-scene>
+</script></head><body>
+<div id="status">缶バッジを映してください</div>
+<video id="alphaVideo" muted playsinline webkit-playsinline autoplay loop preload="auto" crossorigin="anonymous" src="./assets/soyo_alpha.mp4"></video>
+<button id="gear" aria-label="位置調整">⚙</button>
+<div id="panel"><b>アニメーション位置調整</b><label>左右<input id="x" type="range" min="-0.5" max="0.5" step="0.005"></label><label>上下<input id="y" type="range" min="-0.5" max="0.5" step="0.005"></label><label>大きさ<input id="scale" type="range" min="0.2" max="2.5" step="0.01"></label><label>回転<input id="rotation" type="range" min="-180" max="180" step="1"></label><button id="reset">初期位置に戻す</button><p style="font-size:12px">位置はこの端末に保存されます。</p></div>
+<a-scene mindar-image="imageTargetSrc: ./badge_target.mind; autoStart: true;" renderer="colorManagement:true;alpha:true;antialias:true" color-space="sRGB" vr-mode-ui="enabled:false" device-orientation-permission-ui="enabled:false" embedded>
+<a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
+<a-entity id="target" mindar-image-target="targetIndex: 0"><a-plane width="1" height="1" badge-video></a-plane></a-entity>
+</a-scene>
 <script>
-// MindAR places its camera video behind the WebGL canvas by default.
-// Make the camera layer explicit so it is not hidden by the opaque page.
-function ensureCameraLayer(){
-  // Keep MindAR's own camera-video positioning; forcing it into a new stacking context can hide it.
-  document.querySelectorAll('video').forEach(v=>{v.style.visibility='visible';v.style.opacity='1';});
-  const scene=document.querySelector('a-scene');
-  if(scene&&scene.renderer){scene.renderer.setClearColor(0x000000,0);scene.renderer.setClearAlpha(0);scene.renderer.autoClear=true;}
-}
-
-document.querySelector('a-scene').addEventListener('renderstart',ensureCameraLayer);
-const status=document.getElementById('status'),target=document.getElementById('target');target.addEventListener('targetFound',()=>status.style.display='none');target.addEventListener('targetLost',()=>{status.textContent='缶バッジを映してください';status.style.display='block'});document.querySelector('a-scene').addEventListener('arError',()=>{status.textContent='AR起動エラー：カメラの許可とbadge_target.mindを確認してください';status.style.display='block'});
-const panel=document.getElementById('panel');document.getElementById('gear').onclick=()=>panel.style.display=panel.style.display==='block'?'none':'block';function update(){for(const key of Object.keys(defaults)){settings[key]=Number(document.getElementById(key).value)}localStorage.setItem('badge-ar-settings',JSON.stringify(settings));target.querySelector('[badge-animation]').components['badge-animation']?.apply()};for(const key of Object.keys(defaults)){const el=document.getElementById(key);el.value=settings[key];el.addEventListener('input',update)}document.getElementById('reset').onclick=()=>{settings={...defaults};for(const key of Object.keys(defaults))document.getElementById(key).value=settings[key];update()};
+const scene=document.querySelector('a-scene'),status=document.getElementById('status'),target=document.getElementById('target'),video=document.getElementById('alphaVideo');
+function playVideo(){video.play().catch(()=>{status.textContent='画面を一度タップして動画を開始してください';status.style.display='block';});}
+scene.addEventListener('renderstart',()=>{if(scene.renderer){scene.renderer.setClearColor(0x000000,0);scene.renderer.setClearAlpha(0)}playVideo()});
+document.addEventListener('pointerdown',playVideo,{passive:true});
+target.addEventListener('targetFound',()=>{status.style.display='none';if(video.ended||video.paused)playVideo()});
+target.addEventListener('targetLost',()=>{status.textContent='缶バッジを映してください';status.style.display='block'});
+scene.addEventListener('arError',()=>{status.textContent='AR起動エラー：カメラの許可を確認してください';status.style.display='block'});
+const panel=document.getElementById('panel');
+document.getElementById('gear').onclick=()=>panel.style.display=panel.style.display==='block'?'none':'block';
+function update(){for(const key of Object.keys(defaults))settings[key]=Number(document.getElementById(key).value);localStorage.setItem('badge-ar-settings',JSON.stringify(settings));target.querySelector('[badge-video]').components['badge-video']?.apply()}
+for(const key of Object.keys(defaults)){const el=document.getElementById(key);el.value=settings[key];el.addEventListener('input',update)}
+document.getElementById('reset').onclick=()=>{settings={...defaults};for(const key of Object.keys(defaults))document.getElementById(key).value=settings[key];update()};
 </script></body></html>
