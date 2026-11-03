@@ -4,12 +4,50 @@
 <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 <script>
-const defaults={x:0,y:0,scale:1,rotation:0};let settings={...defaults};try{settings={...settings,...JSON.parse(localStorage.getItem('badge-ar-settings')||'{}')}}catch(e){}
+const defaults={x:0,y:0,scale:0.78,rotation:0};let settings={...defaults};try{settings={...settings,...JSON.parse(localStorage.getItem('badge-ar-settings')||'{}')}}catch(e){}
+// Sprite-sheet animation: 480 real frames at 15fps. Animated WebP inside an Image
+// does not reliably advance when copied to a canvas on iOS Safari.
+const FPS=15, SHEET_COUNT=30, TILE=350;
+const sheets=new Map(), loading=new Map();
+function getSheet(n){
+ if(sheets.has(n))return sheets.get(n);
+ if(!loading.has(n)){
+  const img=new Image(); img.decoding='async';
+  const promise=new Promise(resolve=>{img.onload=()=>{sheets.set(n,img);loading.delete(n);resolve(img)};img.onerror=()=>{loading.delete(n);resolve(null)};});
+  loading.set(n,promise);img.src='./assets/sheets/'+String(n).padStart(2,'0')+'.webp';
+ }
+ return null;
+}
 AFRAME.registerComponent('badge-animation',{
-init:function(){const self=this;this.videoImage=new Image();this.videoImage.src='./assets/animation.webp';this.canvas=document.createElement('canvas');this.canvas.width=500;this.canvas.height=500;this.ctx=this.canvas.getContext('2d');this.texture=new THREE.CanvasTexture(this.canvas);this.texture.colorSpace=THREE.SRGBColorSpace;this.texture.minFilter=THREE.LinearFilter;this.material=new THREE.MeshBasicMaterial({map:this.texture,transparent:true,side:THREE.DoubleSide,depthWrite:false,toneMapped:false});this.el.addEventListener('object3dset',()=>self.apply());this.videoImage.onload=()=>self.apply();this.apply()},
-apply:function(){const mesh=this.el.getObject3D('mesh');if(mesh)mesh.material=this.material;this.el.object3D.position.set(settings.x,settings.y,0.015);this.el.object3D.rotation.z=settings.rotation*Math.PI/180;this.el.object3D.scale.set(settings.scale,settings.scale,1)},
-tick:function(){if(!this.videoImage.complete||!this.videoImage.naturalWidth)return;this.ctx.clearRect(0,0,500,500);this.ctx.drawImage(this.videoImage,0,0,500,500);this.texture.needsUpdate=true},
-remove:function(){this.texture.dispose();this.material.dispose()}
+ init:function(){
+  this.canvas=document.createElement('canvas');this.canvas.width=TILE;this.canvas.height=TILE;
+  this.ctx=this.canvas.getContext('2d',{alpha:true});
+  this.texture=new THREE.CanvasTexture(this.canvas);this.texture.minFilter=THREE.LinearFilter;
+  this.material=new THREE.MeshBasicMaterial({map:this.texture,transparent:true,side:THREE.DoubleSide,depthWrite:false,toneMapped:false});
+  this.startTime=null;this.lastFrame=-1;this.ready=false;
+  this.el.addEventListener('object3dset',()=>this.apply());this.apply();getSheet(0);getSheet(1);
+ },
+ apply:function(){
+  const mesh=this.el.getObject3D('mesh');if(mesh)mesh.material=this.material;
+  this.el.object3D.position.set(settings.x,settings.y,0.015);
+  this.el.object3D.rotation.z=settings.rotation*Math.PI/180;
+  this.el.object3D.scale.set(settings.scale,settings.scale,1);
+ },
+ tick:function(t){
+  if(this.startTime===null)this.startTime=t;
+  const frame=Math.floor((t-this.startTime)*FPS/1000)%480;
+  const sheetIndex=Math.floor(frame/16),local=frame%16;
+  const sheet=getSheet(sheetIndex);
+  getSheet((sheetIndex+1)%SHEET_COUNT);
+  if(!sheet)return;
+  if(frame===this.lastFrame)return;
+  this.ctx.clearRect(0,0,TILE,TILE);
+  this.ctx.drawImage(sheet,(local%4)*TILE,Math.floor(local/4)*TILE,TILE,TILE,0,0,TILE,TILE);
+  this.texture.needsUpdate=true;this.lastFrame=frame;
+  // Keep only nearby decoded sprite sheets to avoid excessive mobile memory usage.
+  for(const n of sheets.keys())if(n!==sheetIndex&&n!==(sheetIndex+1)%SHEET_COUNT&&n!==(sheetIndex+SHEET_COUNT-1)%SHEET_COUNT)sheets.delete(n);
+ },
+ remove:function(){this.texture.dispose();this.material.dispose()}
 });
 </script></head><body><div id="status">缶バッジを映してください</div><button id="gear" aria-label="位置調整">⚙</button><div id="panel"><b>アニメーション位置調整</b><label>左右<input id="x" type="range" min="-0.5" max="0.5" step="0.005"></label><label>上下<input id="y" type="range" min="-0.5" max="0.5" step="0.005"></label><label>大きさ<input id="scale" type="range" min="0.2" max="2.5" step="0.01"></label><label>回転<input id="rotation" type="range" min="-180" max="180" step="1"></label><button id="reset">初期位置に戻す</button><p style="font-size:12px">位置はこの端末に保存されます。</p></div>
 <a-scene mindar-image="imageTargetSrc: ./badge_target.mind; autoStart: true;" renderer="colorManagement:true;alpha:true;antialias:true" color-space="sRGB" vr-mode-ui="enabled:false" device-orientation-permission-ui="enabled:false" embedded><a-camera position="0 0 0" look-controls="enabled:false"></a-camera><a-entity id="target" mindar-image-target="targetIndex: 0"><a-plane width="1" height="1" badge-animation></a-plane></a-entity></a-scene>
@@ -22,7 +60,7 @@ function ensureCameraLayer(){
   const scene=document.querySelector('a-scene');
   if(scene&&scene.renderer){scene.renderer.setClearColor(0x000000,0);scene.renderer.setClearAlpha(0);scene.renderer.autoClear=true;}
 }
-new MutationObserver(ensureCameraLayer).observe(document.body,{childList:true,subtree:true});
+
 document.querySelector('a-scene').addEventListener('renderstart',ensureCameraLayer);
 const status=document.getElementById('status'),target=document.getElementById('target');target.addEventListener('targetFound',()=>status.style.display='none');target.addEventListener('targetLost',()=>{status.textContent='缶バッジを映してください';status.style.display='block'});document.querySelector('a-scene').addEventListener('arError',()=>{status.textContent='AR起動エラー：カメラの許可とbadge_target.mindを確認してください';status.style.display='block'});
 const panel=document.getElementById('panel');document.getElementById('gear').onclick=()=>panel.style.display=panel.style.display==='block'?'none':'block';function update(){for(const key of Object.keys(defaults)){settings[key]=Number(document.getElementById(key).value)}localStorage.setItem('badge-ar-settings',JSON.stringify(settings));target.querySelector('[badge-animation]').components['badge-animation']?.apply()};for(const key of Object.keys(defaults)){const el=document.getElementById(key);el.value=settings[key];el.addEventListener('input',update)}document.getElementById('reset').onclick=()=>{settings={...defaults};for(const key of Object.keys(defaults))document.getElementById(key).value=settings[key];update()};

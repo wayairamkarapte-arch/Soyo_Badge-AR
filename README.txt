@@ -1,20 +1,9 @@
-缶バッジWebAR / 直径57mm / 15fps / 32秒ループ
+Soyo Badge AR / 15fps sprite-sheet fix
 
-【完成しているもの】
-- index.html: AR表示・アニメーション・位置調整
-- assets/animation.webp: 透過アニメーション（480枚→15fps、約15MB）
-- target_image.jpg: 印刷イラストを画像認識用に正方形にした画像
+Upload index.html and the entire assets/sheets folder to the ROOT of your existing Soyo_Badge-AR GitHub repository. Keep badge_target.mind and target_image.jpg unchanged.
 
-【画像認識データ】
-badge_target.mind は同梱済みです。追加のコンパイル作業は不要です。
+The previous animated WebP image could remain frozen when drawn into a canvas on iPhone Safari. This version advances 480 individual frames explicitly at 15 fps.
 
-【公開】
-GitHubの新しいリポジトリに index.html / badge_target.mind / assets フォルダをアップロードし、Settings → Pages で公開してください。
-QRコードは公開したGitHub PagesのURLに向けます。
+Existing position adjustments in your Safari browser are preserved. The default scale for new devices is approximately 0.78, based on the screenshot, and can be fine-tuned with the gear icon.
 
-【注意】
-缶バッジの実物は曲面・光沢・反射があるため、印刷前の画像だけでなく実物での認識テストが必要です。
-アニメーションはWebP形式です。Safari/Chromeの実機動作は未検証です。
-初期位置は仮設定です。歯車から印刷イラストに合わせて調整してください。
-
-カメラ表示修正版: iPhone Safari/Android Chromeで確認してください。既存リポジトリのindex.htmlのみ上書きでも反映できます。
+Refresh Safari after GitHub Pages deployment. Test on your actual phone.
